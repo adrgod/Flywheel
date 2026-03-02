@@ -1,0 +1,14 @@
+name: flywheel
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - openjdk=17
+  - pip
+  - pip:
+      - jsonpath_ng==1.8.0
+      - polars==1.36.1
+      - pyspark==4.0.2
+      - pandas==2.3.3
+      - pyarrow==21.0.0
+      - numpy==2.0.2
