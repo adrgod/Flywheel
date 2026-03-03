@@ -130,12 +130,20 @@ def process_data(spark, input_path, output_path):
 
     df_all = df_a.unionByName(df_b, allowMissingColumns=True)
     
-
+    #date validation flag to filter out or to count missed data
     df_all = df_all.withColumn(
     "date_str",
     F.when(F.col("date").isNull(),
            F.lit("invalid_date"))
      .otherwise(F.date_format("date", "yyyy-MM-dd"))
+    )
+
+    df_all = df_all.withColumn(
+        "etl_load_utc_ts",
+        F.date_format(
+            F.to_utc_timestamp(F.current_timestamp(), "UTC"),
+            "yyyy-MM-dd HH:mm:ss"
+        )
     )
 
     df_cleaned = df_all.dropDuplicates(["vendor", "id", "event_timestamp"])
