@@ -1,4 +1,7 @@
 from pathlib import Path
+import os
+import sys
+import subprocess
 
 import pytest
 from pyspark.sql import SparkSession
@@ -7,10 +10,20 @@ from pyspark.sql import SparkSession
 @pytest.fixture(scope="session")
 def spark():
     try:
+        if not os.environ.get("JAVA_HOME"):
+            java_home_cmd = ["/usr/libexec/java_home", "-v", "17"]
+            java_home = subprocess.check_output(java_home_cmd, text=True).strip()
+            os.environ["JAVA_HOME"] = java_home
+
+        os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+        os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+        os.environ.setdefault("SPARK_USER", "pytest")
+
         spark = (
             SparkSession.builder.master("local[2]")
             .appName("flywheel-tests")
             .config("spark.ui.enabled", "false")
+            .config("spark.sql.ansi.enabled", "false")
             .getOrCreate()
         )
     except Exception as exc:

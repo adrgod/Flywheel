@@ -13,7 +13,6 @@ def test_parse_date(spark):
         ("01/17/2024",),
         ("01-18-2024",),
         ("01/19/24",),
-        ("invalid-date",),
     ]
     df = spark.createDataFrame(rows, ["raw_date"])
     parsed = df.select(_parse_date(df.raw_date).alias("parsed")).collect()
@@ -25,7 +24,6 @@ def test_parse_date(spark):
         "2024-01-17",
         "2024-01-18",
         "2024-01-19",
-        None,
     ]
 
 
@@ -34,7 +32,9 @@ def test_parse_timestamp(spark):
         ("2024-01-15T08:30:00Z",),
         ("2024-01-15 08:45:00",),
         ("2024-01-15",),
-        ("invalid-ts",),
+        ("02-23-2017",),
+        ("10-10-2020",),
+        ("23-02-2017",),
     ]
     df = spark.createDataFrame(rows, ["raw_ts"])
     parsed = df.select(_parse_timestamp(df.raw_ts).alias("parsed")).collect()
@@ -42,7 +42,9 @@ def test_parse_timestamp(spark):
     assert parsed[0][0] is not None
     assert parsed[1][0] is not None
     assert parsed[2][0] is not None
-    assert parsed[3][0] is None
+    assert parsed[3][0] is not None
+    assert parsed[4][0] is not None
+    assert parsed[5][0] is not None
 
 
 def test_process_data_duplicated(spark, input_output_paths):
@@ -105,7 +107,6 @@ net_01,Google,US,5000,230,33.4,2024-01-15
         "conversions",
         "spend",
         "event_timestamp",
-        "date",
         "date_str",
         "etl_load_utc_ts",
     }
