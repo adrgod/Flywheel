@@ -2,3 +2,5 @@
 *.parquet
 *.log
 __pycache__/
+Sample_data/raw
+Sample_data/processed
