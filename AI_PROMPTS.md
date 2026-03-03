@@ -975,3 +975,74 @@ df_all = df_all.filter(F.col("id").isNotNull() & (F.trim(F.col("id")) != ""))
 
 Do this right before your `dropDuplicates(...)` / write step.
 
+
+---
+
+**User**
+
+pd.read_parquet best engines
+
+
+For pd.read_parquet() the best engines are:
+
+1. pyarrow (recommended)
+Pros: faster, supports more parquet features, handles partitioned datasets well
+Cons: requires pyarrow package
+Best for: most use cases, large files, nested schemas
+2. fastparquet
+Pros: pure Python alternative, good performance
+Cons: slightly slower than pyarrow, fewer features
+Best for: when pyarrow isn't available
+3. Auto-detect (default)
+For your pipeline
+You're using:
+
+This is good. However, if you're reading a partitioned parquet folder (which your Spark code creates with .partitionBy("date_str")), you should handle the partition columns:
+
+pyarrow handles partitioned datasets elegantly—it reads all partition folders and combines them into one DataFrame with the partition columns included.
+
+If it doesn't work, ensure the path points to the folder containing the date_str=* subdirectories, not a single file.
+
+-- 
+
+where is the mount to output folder?
+
+Your mount covers both input and output.
+
+When you run:
+
+The single mount -v "$(pwd)/data:/app/Sample_data" maps your entire host data folder to /app/Sample_data inside the container:
+
+Input: /app/Sample_data/raw/ → data/raw/ on host
+Output: /app/Sample_data/processed/ → data/processed/ on host
+Both paths are under the same mount, so output written to /app/Sample_data/processed/ will appear in data/processed/ on your host.
+
+The real problem: your data/raw/ is empty. The container tries to read input from there, finds nothing, and exits early with:
+
+So nothing gets processed, and nothing gets written to processed/.
+
+Fix: populate the input folder first. Do you have files in raw?
+
+If yes, copy them to data/raw/:
+
+Then rerun the container.
+
+
+---
+
+my container image is 2.8 Gb big. how can I reduze its size?
+
+
+I’ll inspect your current Dockerfile and build context first, then I’ll apply focused changes (base image, deps, and .dockerignore) to shrink the image and verify the new size with a rebuild.
+
+Created 4 todos
+
+Next I’m checking the exact current Dockerfile and whether you already have a .dockerignore, so we can target the biggest size wins.
+
+Excellent finding: there’s no .dockerignore, and COPY . /app is sending everything (including .git, .conda, caches, data artifacts) into the image; that’s usually the main reason images balloon. I’ll now tighten the Dockerfile copy steps and add a .dockerignore, then rebuild and measure.
+
+I’m adding a focused .dockerignore now so your build context stays tiny even if folders grow later.
+
+Now I’ll build a new tag and compare image sizes so you can see the actual reduction from these changes.
+
+
