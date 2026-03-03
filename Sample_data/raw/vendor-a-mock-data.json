@@ -96,13 +96,14 @@
   },
   {
     "data":{
-      "campaign_id": "camp_005",
+      "campaign_id": "camp_006",
       "campaign_name": "click bait",
-      "vendor_timestamp": "2024-01-16",
+      "vendor_timestamp": "2026-03-03",
       "platform": "street",
       "metrics": {
         "impressions": 12000,
         "conversions": 21,
+        "clicks": 13,
         "spend": 99.00
       }
     }
