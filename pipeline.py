@@ -1,7 +1,7 @@
 import os
 
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType
+from pyspark.sql.types import ArrayType, StructType
 import pandas as pd
 
 
@@ -20,7 +20,58 @@ def _parse_timestamp(col: F.Column) -> F.Column:
         F.to_timestamp(col, "yyyy-MM-dd'T'HH:mm:ssX"),
         F.to_timestamp(col, "yyyy-MM-dd HH:mm:ss"),
         F.to_timestamp(col, "yyyy-MM-dd"),
+        F.to_timestamp(col, "MM-dd-yyyy"),
+        F.to_timestamp(col, "dd-MM-yyyy"),
     )
+
+
+def _flatten_json(df):
+    """
+    Flattens nested JSON columns recursively.
+    - Struct fields are expanded to <parent>_<child> columns.
+    - Array fields are exploded with explode_outer.
+    """
+    while True:
+        struct_cols = [
+            field.name
+            for field in df.schema.fields
+            if isinstance(field.dataType, StructType)
+        ]
+        array_cols = [
+            field.name
+            for field in df.schema.fields
+            if isinstance(field.dataType, ArrayType)
+        ]
+
+        if not struct_cols and not array_cols:
+            break
+
+        for column_name in struct_cols:
+            child_fields = df.schema[column_name].dataType.fields
+            expanded = [
+                F.col(f"{column_name}.{child.name}").alias(f"{column_name}_{child.name}")
+                for child in child_fields
+            ]
+            df = df.select("*", *expanded).drop(column_name)
+
+        for column_name in array_cols:
+            df = df.withColumn(column_name, F.explode_outer(F.col(column_name)))
+
+    return df
+
+
+def _pick_first(df, candidates, cast_type):
+    existing = [candidate for candidate in candidates if candidate in df.columns]
+    if not existing:
+        return F.lit(None).cast(cast_type)
+    return F.coalesce(*[F.col(candidate).cast(cast_type) for candidate in existing])
+
+
+def _pick_first_timestamp(df, candidates):
+    existing = [candidate for candidate in candidates if candidate in df.columns]
+    if not existing:
+        return F.lit(None).cast("timestamp")
+    return F.coalesce(*[_parse_timestamp(F.col(candidate).cast("string")) for candidate in existing])
 
 
 def process_data(spark, input_path, output_path):
@@ -31,60 +82,63 @@ def process_data(spark, input_path, output_path):
 
     # Vendor A (JSON)
     df_json_raw = (
-        spark.read.option("multiline", "true")
+        spark.read.option("multiline", "true") 
         .option("pathGlobFilter", "*.json")
         .json(input_path)
     )
 
-    ts_a = _parse_timestamp(F.col("vendor_timestamp"))
+    df_json_flat = _flatten_json(df_json_raw)
+
+    ts_a = _pick_first_timestamp(df_json_flat, ["vendor_timestamp", "data_vendor_timestamp"])
     date_a = F.to_date(ts_a)
 
     # Pre-compute expressions so schema changes don't break the pipeline.
-    if "campaign_id" in df_json_raw.columns:
-        id_expr = F.col("campaign_id").cast("string").alias("id")
-    else:
-        id_expr = F.lit(None).cast("string").alias("id")
+    id_expr = _pick_first(df_json_flat, ["campaign_id", "data_campaign_id"], "string").alias("id")
 
-    # We always know this is vendor A; if you really want to depend on a column,
-    # you can switch this to a conditional too.
+    # Adding field vendor with vendor's name
     vendor_expr = F.lit("vendor_a").alias("vendor")
 
-    if "campaign_name" in df_json_raw.columns:
-        name_expr = F.col("campaign_name").cast("string").alias("name")
-    else:
-        name_expr = F.lit(None).cast("string").alias("name")
+    name_expr = _pick_first(df_json_flat, ["campaign_name", "data_campaign_name"], "string").alias("name")
 
-    if "platform" in df_json_raw.columns:
-        platform_expr = F.col("platform").cast("string").alias("platform")
-    else:
-        platform_expr = F.lit(None).cast("string").alias("platform")
+    platform_expr = _pick_first(df_json_flat, ["platform", "data_platform"], "string").alias("platform")
 
-    if "status" in df_json_raw.columns:
-        status_expr = F.col("status").cast("string").alias("status")
-    else:
-        status_expr = F.lit(None).cast("string").alias("status")
+    status_expr = _pick_first(df_json_flat, ["status", "data_status"], "string").alias("status")
 
-    if "audience" in df_json_raw.columns:
-        region_expr = F.col("audience.region").cast("string").alias("region")
-        age_group_expr = F.col("audience.age_group").cast("string").alias("age_group")
-    else:
-        region_expr = F.lit(None).cast("string").alias("region")
-        age_group_expr = F.lit(None).cast("string").alias("age_group")
+    region_expr = _pick_first(
+        df_json_flat,
+        ["audience_region", "data_audience_region", "region", "data_region"],
+        "string",
+    ).alias("region")
+    age_group_expr = _pick_first(
+        df_json_flat,
+        ["audience_age_group", "data_audience_age_group", "age_group", "data_age_group"],
+        "string",
+    ).alias("age_group")
 
-    if "metrics" in df_json_raw.columns:
-        impressions_expr = F.col("metrics.impressions").cast("long").alias("impressions")
-        clicks_expr = F.col("metrics.clicks").cast("long").alias("clicks")
-        conversions_expr = F.col("metrics.conversions").cast("long").alias("conversions")
-        spend_expr = F.col("metrics.spend").cast("double").alias("spend")
-    else:
-        impressions_expr = F.lit(None).cast("long").alias("impressions")
-        clicks_expr = F.lit(None).cast("long").alias("clicks")
-        conversions_expr = F.lit(None).cast("long").alias("conversions")
-        spend_expr = F.lit(None).cast("double").alias("spend")
+    impressions_expr = _pick_first(
+        df_json_flat,
+        ["metrics_impressions", "data_metrics_impressions", "impressions", "data_impressions"],
+        "long",
+    ).alias("impressions")
+    clicks_expr = _pick_first(
+        df_json_flat,
+        ["metrics_clicks", "data_metrics_clicks", "clicks", "data_clicks"],
+        "long",
+    ).alias("clicks")
+    conversions_expr = _pick_first(
+        df_json_flat,
+        ["metrics_conversions", "data_metrics_conversions", "conversions", "data_conversions"],
+        "long",
+    ).alias("conversions")
+    spend_expr = _pick_first(
+        df_json_flat,
+        ["metrics_spend", "data_metrics_spend", "spend", "data_spend"],
+        "double",
+    ).alias("spend")
 
     ts_expr = F.date_format(ts_a, "yyyy-MM-dd HH:mm:ss").alias("event_timestamp")
 
-    df_a = df_json_raw.select(
+    df_a = df_json_flat.select(
         id_expr,
         vendor_expr,
         name_expr,
@@ -145,6 +199,8 @@ def process_data(spark, input_path, output_path):
             "yyyy-MM-dd HH:mm:ss"
         )
     )
+    
+    df_all = df_all.drop("date")
 
     df_cleaned = df_all.dropDuplicates(["vendor", "id", "event_timestamp"])
 
@@ -196,6 +252,17 @@ def analytic_calculations(base_path):
     .reset_index()
     )
 
+    count_of_invalid_dates = (
+        df_cleaned.loc[
+            df_cleaned["date_str"] == "invalid_date",
+            ["vendor", "id", "name"]
+        ]
+        .groupby(["vendor", "id", "name"], dropna=False, observed=False)
+        .size()
+        .reset_index(name="rows")
+        .sort_values(["vendor", "rows"], ascending=[True, False])
+    )
+
     # Save reports
     reports_dir = os.path.join(base_path, "Sample_data/reports")
     os.makedirs(reports_dir, exist_ok=True)
@@ -203,6 +270,8 @@ def analytic_calculations(base_path):
     totals_by_vendor.to_csv(os.path.join(reports_dir, "totals_by_vendor.csv"), index=False)
     totals_by_campaign.to_csv(os.path.join(reports_dir, "totals_by_campaign.csv"), index=False)
     totals_by_day_vendor.to_csv(os.path.join(reports_dir, "totals_by_day_vendor.csv"), index=False)
+
+    count_of_invalid_dates.to_csv(os.path.join(reports_dir, "count_of_invalid_dates.csv"), index=False)
 
 
 
