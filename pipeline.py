@@ -6,21 +6,51 @@ import pandas as pd
 
 
 def _parse_date(col: F.Column) -> F.Column:
+    col_as_str = col.cast("string")
     return F.coalesce(
-        F.to_date(col, "yyyy-MM-dd"),
-        F.to_date(col, "yyyy/MM/dd"),
-        F.to_date(col, "MM/dd/yyyy"),
-        F.to_date(col, "MM-dd-yyyy"),
-        F.to_date(col, "MM/dd/yy"),
+        F.when(col_as_str.rlike(r"^\d{4}-\d{2}-\d{2}$"), F.to_date(col_as_str, "yyyy-MM-dd")),
+        F.when(col_as_str.rlike(r"^\d{4}/\d{2}/\d{2}$"), F.to_date(col_as_str, "yyyy/MM/dd")),
+        F.when(col_as_str.rlike(r"^\d{2}/\d{2}/\d{4}$"), F.to_date(col_as_str, "MM/dd/yyyy")),
+        F.when(col_as_str.rlike(r"^\d{2}-\d{2}-\d{4}$"), F.to_date(col_as_str, "MM-dd-yyyy")),
+        F.when(col_as_str.rlike(r"^\d{2}/\d{2}/\d{2}$"), F.to_date(col_as_str, "MM/dd/yy")),
     )
 
 
 def _parse_timestamp(col: F.Column) -> F.Column:
+    col_as_str = col.cast("string")
     return F.coalesce(
-        F.to_timestamp(col, "yyyy-MM-dd'T'HH:mm:ssX"),
-        F.to_timestamp(col, "yyyy-MM-dd HH:mm:ss"),
-        F.to_timestamp(col, "yyyy-MM-dd"),
+        F.when(
+            col_as_str.rlike(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:?\d{2})$"),
+            F.to_timestamp(col_as_str, "yyyy-MM-dd'T'HH:mm:ssX"),
+        ),
+        F.when(
+            col_as_str.rlike(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"),
+            F.to_timestamp(col_as_str, "yyyy-MM-dd HH:mm:ss"),
+        ),
+        F.when(
+            col_as_str.rlike(r"^\d{4}-\d{2}-\d{2}$"),
+            F.to_timestamp(col_as_str, "yyyy-MM-dd"),
+        ),
     )
+
+
+def _raise_if_invalid_format(df, raw_col_name: str, parsed_col: F.Column, label: str) -> None:
+    if raw_col_name not in df.columns:
+        return
+
+    invalid_df = df.where(F.col(raw_col_name).isNotNull() & parsed_col.isNull())
+    invalid_count = invalid_df.count()
+    if invalid_count > 0:
+        invalid_samples = [
+            row[0]
+            for row in invalid_df.select(raw_col_name).distinct().limit(5).collect()
+            if row[0] is not None
+        ]
+        raise ValueError(
+            f"Invalid {label} format in column '{raw_col_name}'. "
+            f"Found {invalid_count} invalid row(s). "
+            f"Examples: {invalid_samples}"
+        )
 
 
 def process_data(spark, input_path, output_path):
@@ -37,6 +67,7 @@ def process_data(spark, input_path, output_path):
     )
 
     ts_a = _parse_timestamp(F.col("vendor_timestamp"))
+    _raise_if_invalid_format(df_json_raw, "vendor_timestamp", ts_a, "timestamp")
     date_a = F.to_date(ts_a)
 
     # Pre-compute expressions so schema changes don't break the pipeline.
@@ -110,6 +141,7 @@ def process_data(spark, input_path, output_path):
     )
 
     date_b = _parse_date(F.col("report_date"))
+    _raise_if_invalid_format(df_csv_raw, "report_date", date_b, "date")
     ts_b = F.to_timestamp(date_b)
 
     df_b = df_csv_raw.select(
