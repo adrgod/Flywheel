@@ -10,8 +10,8 @@ def main():
     # 2. Define Paths
     # Tip: Use absolute paths to avoid issues with local execution
     base_path = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(base_path, "Sample_data/raw/")
-    output_path = os.path.join(base_path, "Sample_data/processed/")
+    input_path = os.getenv("INPUT_PATH", os.path.join(base_path, "Sample_data/raw/"))
+    output_path = os.getenv("OUTPUT_PATH", os.path.join(base_path, "Sample_data/processed/"))
 
     print(f"[*] Starting ETL Job...")
     print(f"[*] Reading files from: {input_path}")
