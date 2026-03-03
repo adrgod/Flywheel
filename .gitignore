@@ -1,6 +1,12 @@
 *.csv
 *.parquet
 *.log
-__pycache__/
+__pycache__
 Sample_data/raw
 Sample_data/processed
+.vscode
+.conda
+.pytest_cache
+.env
+.venv/
+venv/
