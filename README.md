@@ -76,7 +76,7 @@ docker build -t flywheel-etl .
 # inside the container appear on your host.
 # you can use any path, just make sure the left side exists.
 
-docker run --rm -v "$(pwd)/data:/app/data" flywheel-etl
+docker run --rm -v "$(pwd)/Sample_data:/app/Sample_data" flywheel-etl
 
 # for example, if you want output in ~/my-results, create that directory and
 # mount it:
