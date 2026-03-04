@@ -1,5 +1,16 @@
-date_str,vendor,total_spend,total_clicks
-2024-01-15,vendor_a,11545.75,7732
-2024-01-15,vendor_b,50912.5,33133
-invalid_date,vendor_a,99.0,93
-invalid_date,vendor_b,0.0,0
+event_timestamp,vendor,name,total_spend,total_clicks,total_conversions
+2024-01-15 00:00:00,vendor_a,Email Retarget,150.0,892,67
+2024-01-15 00:00:00,vendor_b,Discord,7890.75,3456,0
+2024-01-15 00:00:00,vendor_b,Pinterest,3200.0,1876,0
+2024-01-15 00:00:00,vendor_b,Reddit,2100.0,1234,0
+2024-01-15 00:00:00,vendor_b,Snapchat,5420.5,2145,0
+2024-01-15 00:00:00,vendor_b,Spotify,6750.5,4321,0
+2024-01-15 00:00:00,vendor_b,TikTok Ads,8750.25,4521,0
+2024-01-15 00:00:00,vendor_b,Twitch,1200.5,890,0
+2024-01-15 00:00:00,vendor_b,Twitter,0.0,2345,0
+2024-01-15 00:00:00,vendor_b,YouTube,15600.0,12345,0
+2024-01-15 08:30:00,vendor_a,Summer Sale 2024,5420.5,3450,287
+2024-01-15 08:45:00,vendor_a,Black Friday Promo,3875.25,2156,189
+2024-01-15 09:15:00,vendor_a,Holiday Push,2100.0,1234,0
+2026-03-03 00:00:00,vendor_a,click bait,99.0,13,21
+,vendor_a,new promo,99.0,93,21
