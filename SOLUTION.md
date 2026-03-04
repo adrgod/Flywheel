@@ -30,3 +30,4 @@ Tradeoffs I suppose is the relative complexity of the solution (it's not just a 
 
 Also, for performance reasons, spark can be configured better so we take advantage of its paralelism. I'm thinking of having a script splitting a huge JSON into multiple files so spark can be tuned to perform better in such scenario.
 
+Logs are gathered throughout the execution and saved in location Sample_data/logs/
