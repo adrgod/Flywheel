@@ -74,11 +74,14 @@ def _pick_first_timestamp(df, candidates):
     return F.coalesce(*[_parse_timestamp(F.col(candidate).cast("string")) for candidate in existing])
 
 
-def process_data(spark, input_path, output_path):
+def process_data(spark, input_path, output_path, logger=None):
     """
     Reads data from both vendors, parses, partitions it and writes to output path.
     Source and Output should then be a S3 location
     """
+
+    if logger:
+        logger.info("Step: reading Vendor A JSON from %s", input_path)
 
     # Vendor A (JSON)
     df_json_raw = (
@@ -88,6 +91,9 @@ def process_data(spark, input_path, output_path):
     )
 
     df_json_flat = _flatten_json(df_json_raw)
+
+    if logger:
+        logger.info("Step: flattened Vendor A schema")
 
     ts_a = _pick_first_timestamp(df_json_flat, ["vendor_timestamp", "data_vendor_timestamp"])
     date_a = F.to_date(ts_a)
@@ -154,6 +160,9 @@ def process_data(spark, input_path, output_path):
         date_a.alias("date"),
     )
 
+    if logger:
+        logger.info("Step: reading Vendor B CSV from %s", input_path)
+
     # Vendor B (CSV)
     df_csv_raw = (
         spark.read.option("header", "true")
@@ -182,6 +191,9 @@ def process_data(spark, input_path, output_path):
         date_b.alias("date")
     )
 
+    if logger:
+        logger.info("Step: standardizing and unioning vendor datasets")
+
     df_all = df_a.unionByName(df_b, allowMissingColumns=True)
     
     #date validation flag to filter out or to count missed data
@@ -204,6 +216,9 @@ def process_data(spark, input_path, output_path):
 
     df_cleaned = df_all.dropDuplicates(["vendor", "id", "event_timestamp"])
 
+    if logger:
+        logger.info("Step: writing parquet output to %s", output_path)
+
     (
         df_cleaned.write.mode("overwrite")
         .partitionBy("date_str") #partitioning by date, including all vendors
@@ -211,9 +226,12 @@ def process_data(spark, input_path, output_path):
         .parquet(output_path)
     )
 
-def analytic_calculations(base_path):
+def analytic_calculations(base_path, logger=None):
 
     output_path = os.path.join(base_path, "Sample_data/processed")
+
+    if logger:
+        logger.info("Step: reading processed parquet from %s", output_path)
 
     df_cleaned = pd.read_parquet(output_path, engine="pyarrow")  # reads partitioned parquet folder
 
@@ -226,6 +244,9 @@ def analytic_calculations(base_path):
     df_cleaned["clicks"] = pd.to_numeric(df_cleaned["clicks"], errors="coerce").fillna(0).astype("int64")
     df_cleaned["impressions"] = pd.to_numeric(df_cleaned["impressions"], errors="coerce").fillna(0).astype("int64")
     df_cleaned["conversions"] = pd.to_numeric(df_cleaned["conversions"], errors="coerce").fillna(0).astype("int64")
+
+    if logger:
+        logger.info("Step: computing analytics reports")
 
     totals_by_vendor = (
         df_cleaned.groupby("vendor", dropna=False, observed=False)
@@ -246,10 +267,12 @@ def analytic_calculations(base_path):
     )
     
     totals_by_day_vendor = (
-    df_cleaned.groupby(["date_str", "vendor"], dropna=False, observed=False)
+    df_cleaned.groupby(["event_timestamp", "vendor", "name"], dropna=False, observed=False)
     .agg(total_spend=("spend", "sum"),
-        total_clicks=("clicks", "sum"))
+        total_clicks=("clicks", "sum"),
+        total_conversions=("conversions","sum"))
     .reset_index()
+    .sort_values(["event_timestamp"])
     )
 
     count_of_invalid_dates = (
@@ -272,6 +295,9 @@ def analytic_calculations(base_path):
     totals_by_day_vendor.to_csv(os.path.join(reports_dir, "totals_by_day_vendor.csv"), index=False)
 
     count_of_invalid_dates.to_csv(os.path.join(reports_dir, "count_of_invalid_dates.csv"), index=False)
+
+    if logger:
+        logger.info("Step: reports saved to %s", reports_dir)
 
 
 
